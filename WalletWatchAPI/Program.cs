@@ -26,10 +26,7 @@ Env.Load();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
-{
-   
-});
+builder.Services.AddSwaggerGen();
 
 var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
 
