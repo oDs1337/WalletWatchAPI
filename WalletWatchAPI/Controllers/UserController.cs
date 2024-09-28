@@ -2,6 +2,12 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WalletWatchAPI.Data;
 using WalletWatchAPI.Models;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.IdentityModel.Tokens;
 
 namespace WalletWatchAPI.Controllers;
 
@@ -9,6 +15,47 @@ namespace WalletWatchAPI.Controllers;
 [ApiController]
 public class UserController : ControllerBase {
     private readonly ExpensesContext _context;
+
+    private string GenerateJwtToken(User user)
+    {
+        var tokenHandler = new JwtSecurityTokenHandler();
+        var jwtSecretKey = Environment.GetEnvironmentVariable("jwtSecretKey");
+        var key = Encoding.ASCII.GetBytes(jwtSecretKey);
+        var tokenDescriptior = new SecurityTokenDescriptor
+        {
+            Subject = new ClaimsIdentity(new Claim[]
+            {
+                new Claim(ClaimTypes.Name, user.Id.ToString()),
+            }),
+            Expires = DateTime.UtcNow.AddMinutes(30),
+            SigningCredentials =
+                new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+        };
+
+        var token = tokenHandler.CreateToken(tokenDescriptior);
+        return tokenHandler.WriteToken(token);
+    }
+
+    [HttpPost("login")]
+    public async Task<IActionResult> Login(LoginRequest request)
+    {
+        var user = await _context.Users.FirstOrDefaultAsync(x => x.Email == request.Email);
+
+        if (user == null)
+        {
+            return Unauthorized("Invalid credentials");
+        }
+
+        bool isPasswordValid = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
+        if (!isPasswordValid)
+        {
+            return Unauthorized("Invalid credentials");
+        }
+        
+        var token = GenerateJwtToken(user);
+
+        return Ok(new { token });
+    }
 
     public UserController(ExpensesContext context) {
         _context = context;
@@ -18,7 +65,8 @@ public class UserController : ControllerBase {
     public async Task<ActionResult<IEnumerable<User>>> GetUsers() {
         return await _context.Users.ToListAsync();
     }
-
+    
+    [Authorize]
     [HttpGet("{id}")]
     public async Task<ActionResult<User>> GetUser(int id) {
         var user = await _context.Users.FindAsync(id);
@@ -28,26 +76,6 @@ public class UserController : ControllerBase {
         }
 
         return user;
-    }
-
-    [HttpPost("login")]
-    public async Task<IActionResult> Login(LoginRequest request)
-    {
-        var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
-
-        if (user == null)
-        {
-            return Unauthorized("Username or password is incorrect");
-        }
-
-        bool isPasswordValid = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
-
-        if (!isPasswordValid)
-        {
-            return Unauthorized("Username or password is incorrect");
-        }
-        
-        return Ok("Login successful");
     }
 
     [HttpPost("register")]
